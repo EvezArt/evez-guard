@@ -11,10 +11,13 @@ to the installed Hermes version; do not copy a guessed adapter signature.
 2. Call `Guard.before_tool_call(session_id, tool_name, arguments, call_id)`.
 3. Map `allow` to continue; map `deny` to the hook's hard-block action; map
    `review` to the hook's human-approval action.
-4. If the policy, ledger, or adapter raises or times out, block the tool call.
-5. Append the decision metadata to `HashChainLedger` before returning the hook
+4. If a sensitive read receives human approval, call
+   `record_approved_sensitive_read(session_id)` only after the read actually
+   executes successfully. A request or approval alone is not evidence of access.
+5. If the policy, ledger, or adapter raises or times out, block the tool call.
+6. Append decision metadata to `HashChainLedger` before returning the hook
    action. If evidence cannot be persisted, fail closed.
-6. Never log prompts, credentials, raw arguments, or tool output.
+7. Never log prompts, credentials, raw arguments, or tool output.
 
 ## Minimal adapter pseudocode
 
@@ -30,6 +33,10 @@ if decision.action == "allow":
 if decision.action == "review":
     return HERMES_REQUIRE_APPROVAL
 return HERMES_BLOCK
+
+# In the trusted post-execution callback, only after approval and successful
+# completion of a sensitive read:
+guard.record_approved_sensitive_read(session_id)
 ```
 
 The constants above are placeholders for the installed Hermes release's actual
