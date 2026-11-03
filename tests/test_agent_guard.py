@@ -2,7 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from agent_guard import Guard, HashChainLedger, Policy, decide, verify_ledger
+from agent_guard import Guard, HashChainLedger, decide, verify_ledger
 
 class PolicyTests(unittest.TestCase):
     def test_safe_read_allowed(self):
@@ -18,13 +18,21 @@ class PolicyTests(unittest.TestCase):
     def test_credential_to_network_denied(self):
         self.assertEqual(decide("http_post", {"body": "token"}, prior_sensitive_read=True)["action"], "deny")
     def test_missing_session_denied(self):
-        self.assertEqual(Guard().before_tool_call("", "list_directory", {}) .action, "deny")
-    def test_session_sequence(self):
+        self.assertEqual(Guard().before_tool_call("", "list_directory", {}).action, "deny")
+    def test_approved_sensitive_read_blocks_later_network(self):
         guard = Guard()
         first = guard.before_tool_call("s1", "read_file", {"path": "/home/u/.env"})
         self.assertEqual(first.action, "review")
-        # A reviewed call is not assumed to have executed; state is not elevated.
-        self.assertEqual(guard.before_tool_call("s1", "http_post", {"url": "https://example.org"}).action, "review")
+        # Only the trusted integration records this after human approval AND successful execution.
+        guard.record_approved_sensitive_read("s1")
+        later = guard.before_tool_call("s1", "http_post", {"url": "https://example.org"})
+        self.assertEqual(later.action, "deny")
+    def test_session_reset_clears_sequence(self):
+        guard = Guard()
+        guard.record_approved_sensitive_read("s1")
+        self.assertEqual(guard.before_tool_call("s1", "http_post", {}).action, "deny")
+        guard.reset_session("s1")
+        self.assertEqual(guard.before_tool_call("s1", "http_post", {}).action, "review")
 
 class LedgerTests(unittest.TestCase):
     def test_hash_chain_valid_and_tamper_detected(self):
